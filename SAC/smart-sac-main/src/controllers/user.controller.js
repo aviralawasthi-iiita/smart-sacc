@@ -30,39 +30,100 @@ const generateAccessTokenAndRefreshTokens = async (userId) => {
   }
 };
 
-
 const registerUser = asyncHandler(async(req,res) => {
-    const {fullname,email,username,roll_no, password,phone_number} = req.body;
+    const {fullname, email, username, roll_no, password, phone_number} = req.body;
+    
     console.log(email);
-    if([fullname,email,username,password,phone_number].some((field)=>field?.trim() === "")){
-        throw new ApiError(400,"all fields are required");
+    
+    // Check for empty fields
+    if([fullname, email, username, password, phone_number].some((field) => field?.trim() === "")){
+        throw new ApiError(400, "All fields are required");
     }
+
+    // Phone number validation (basic 10-digit validation)
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phone_number)) {
+        throw new ApiError(400, "Phone number must be 10 digits");
+    }
+
+    // Password strength validation
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(password)) {
+        throw new ApiError(400, "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character");
+    }
+
+    // Check if user already exists
     const existedUser = await User.findOne({
-        $or:[{username},{email},{phone_number}]
-    })
-    if(existedUser){
-        throw new ApiError(409,"user with email or username  or phone number already exist" );
+        $or: [{username}, {email}, {phone_number}]
+    });
+
+    if (existedUser) {
+        throw new ApiError(409, "User with email, username, or phone number already exists");
     }
+
+    // Generate email verification token
+    const emailVerificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Create user with verification token
     const user = await User.create({
         fullname,
         email,
         password,
         roll_no,
         phone_number,
-        username: username.toLowerCase()
-    })
+        username: username.toLowerCase(),
+        emailVerificationToken,
+        emailVerificationExpires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+        isVerified: false
+    });
+
     const usercheck = await User.findById(user._id).select("-password -refreshToken");
 
-    if(!usercheck){
-        throw new ApiError(500,"user not created");
+    if (!usercheck) {
+        throw new ApiError(500, "User not created");
     }
-    return res.status(201).json(
-        new ApiResponse(200,usercheck,"User created succesfully")
-    )
 
-}); 
+    // Send verification email
+    const verificationMessage = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #333;">Email Verification</h1>
+        <p>Hello ${user.fullname},</p>
+        <p>Thank you for registering! Please use the following verification code to activate your account:</p>
+        
+        <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 30px 0; border-radius: 8px;">
+            <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #007bff;">
+                ${emailVerificationToken}
+            </div>
+        </div>
+        
+        <p><strong>⏰ This verification code will expire in 24 hours.</strong></p>
+        <p>If you didn't create an account, please ignore this email.</p>
+    </div>
+    `;
+
+    try {
+        const transporter = createEmailTransporter();
+        await transporter.sendMail({
+            from: `"Smart-Sac" <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: 'Verify Your Email Address',
+            html: verificationMessage
+        });
+
+        return res.status(201).json(
+            new ApiResponse(201, usercheck, "User created successfully. Please check your email for verification instructions.")
+        );
+
+    } catch (emailError) {
+        // If email fails to send, delete the created user to maintain data consistency
+        await User.findByIdAndDelete(user._id);
+        console.error("Email sending error:", emailError);
+        throw new ApiError(500, "Error sending verification email. Please try again.");
+    }
+});
 
 const loginUser = asyncHandler(async (req,res) => {
+ 
     const {email,password} = req.body;
     if(!email){
         throw new ApiError(400,"username or email is required");
@@ -101,6 +162,100 @@ const loginUser = asyncHandler(async (req,res) => {
         },
         "user loggin in succesfully",
     ))
+});
+
+// Verify Email Token
+const verifyEmail = asyncHandler(async (req, res) => {
+    const { token, email } = req.body;
+
+    if (!token || !email) {
+        throw new ApiError(400, "Token and email are required");
+    }
+
+    const user = await User.findOne({
+        email: email.toLowerCase(),
+        emailVerificationToken: token,
+        emailVerificationExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+        throw new ApiError(400, "Invalid or expired verification token");
+    }
+
+    // Mark user as verified and clear verification fields
+    user.isVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    const verifiedUser = await User.findById(user._id).select("-password -refreshToken");
+
+    return res.status(200).json(
+        new ApiResponse(200, verifiedUser, "Email verified successfully")
+    );
+});
+
+// Resend Verification Email
+const resendVerificationEmail = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        throw new ApiError(400, "Email is required");
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+        // Return success to prevent email enumeration
+        return res.status(200).json(
+            new ApiResponse(200, {}, "If an account exists with this email, a verification token has been sent")
+        );
+    }
+
+    if (user.isVerified) {
+        throw new ApiError(400, "Email is already verified");
+    }
+
+    // Generate new verification token
+    const emailVerificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    user.emailVerificationToken = emailVerificationToken;
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    await user.save({ validateBeforeSave: false });
+
+    const verificationMessage = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #333;">Email Verification</h1>
+        <p>Hello ${user.fullname},</p>
+        <p>Here is your new verification code:</p>
+        
+        <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 30px 0; border-radius: 8px;">
+            <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #007bff;">
+                ${emailVerificationToken}
+            </div>
+        </div>
+        
+        <p><strong>⏰ This verification code will expire in 24 hours.</strong></p>
+    </div>
+    `;
+
+    try {
+        const transporter = createEmailTransporter();
+        await transporter.sendMail({
+            from: `"Smart-Sac" <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: 'Verify Your Email Address',
+            html: verificationMessage
+        });
+
+        return res.status(200).json(
+            new ApiResponse(200, {}, "Verification email sent successfully")
+        );
+
+    } catch (error) {
+        console.error("Email sending error:", error);
+        throw new ApiError(500, "Error sending verification email");
+    }
 });
 
 
@@ -730,4 +885,6 @@ export {registerUser,
     getMessages,
     getGames,
     brokenEquipmentTicket,
+    verifyEmail,
+    resendVerificationEmail
 };

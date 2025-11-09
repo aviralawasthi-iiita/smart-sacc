@@ -16,6 +16,9 @@ const userSchema = new mongoose.Schema({
         type: [String],
         default: [],
     },
+    emailVerificationToken: String,
+    emailVerificationExpires: Date,
+    isVerified: { type: Boolean, default: false },
     games: [
     {
         game: {

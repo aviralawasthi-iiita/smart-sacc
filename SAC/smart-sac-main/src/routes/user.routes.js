@@ -17,7 +17,9 @@ import {
   getConversations,
   getMessages,
   getGames,
-  brokenEquipmentTicket
+  brokenEquipmentTicket,
+  verifyEmail,
+  resendVerificationEmail
 } from "../controllers/user.controller.js";
 
 import { verifyJWT } from "../middlewares/auth.middleware.js";
@@ -26,6 +28,8 @@ const router = Router();
 
 // Authentication
 router.route("/register").post(registerUser);
+router.route("/verify-email").post(verifyEmail);
+router.route("/resend-verification-email").post(resendVerificationEmail);
 router.route("/login").post(loginUser);
 router.route("/logout").post(verifyJWT, logoutUser);
 router.route("/refresh-token").post(refreshAccessToken);

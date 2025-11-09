@@ -11,7 +11,7 @@ import { Equipment } from "../models/equipment.model.js";
 import { Announcement } from "../models/announcement.model.js";
 // import { application } from "express"; // ❌ not used
 import { User } from "../models/user.model.js";
-//import { Game } from "../models/game.model.js";
+import { Game } from "../models/game.model.js";
 
 const generateAccessTokenAndRefreshTokens = async (userId) => {
   try {

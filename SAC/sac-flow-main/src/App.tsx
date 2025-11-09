@@ -23,6 +23,10 @@ import StudentRegister from "./pages/student/StudentRegister";
 import ForgotPassword from "./pages/student/ForgotPassword";
 
 // Student Pages
+// In your App.tsx or routing file
+import EmailVerification from "./pages/student/EmailVerification";
+
+// Add these routes
 import StudentDashboard from "./pages/student/Dashboard";
 import StudentProfile from "./pages/student/Profile";
 import FindPlayers from "./pages/student/Players";
@@ -54,7 +58,9 @@ const App = () => (
             <Route path="/student-login" element={<StudentLogin />} />
             <Route path="/admin/login" element={<AdminLogin />} /> {/* ✅ FIXED */}
             <Route path="/admin/register" element={<RegisterAdmin />} /> {/* ✅ register route */}
+
             <Route path="/student-register" element={<StudentRegister />} />
+            <Route path="/verify-email" element={<EmailVerification />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/home" element={<Index />} />
 

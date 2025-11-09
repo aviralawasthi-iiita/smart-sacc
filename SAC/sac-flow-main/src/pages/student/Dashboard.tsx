@@ -360,8 +360,7 @@ const StudentDashboard = () => {
               {gamesData.map((game) => (
                 <Card
                   key={game._id}
-                  className="border-2 hover:shadow-md transition-all hover:-translate-y-0.5 rounded-lg cursor-pointer"
-                  onClick={() => navigate("/student/players")}
+                  className="border-2 rounded-lg" // Removed hover effects and cursor-pointer
                 >
                   <CardHeader className="p-4 pb-2">
                     <CardTitle className="capitalize text-lg font-semibold">
@@ -378,10 +377,9 @@ const StudentDashboard = () => {
                       </span>
                     ) : (
                       <span className="text-sm text-muted-foreground">
-                        Play now
+                      
                       </span>
                     )}
-                    <Badge variant="secondary">Play</Badge>
                   </CardContent>
                 </Card>
               ))}

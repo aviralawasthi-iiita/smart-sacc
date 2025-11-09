@@ -3,6 +3,7 @@ import cors from "cors"
 import cookieParser from "cookie-parser"
 import { ApiError } from "./utils/ApiError.js" // <-- 1. ADD THIS IMPORT
 
+
 const app = express();
 app.use(cors({
     origin: process.env.CorsOrigin,
