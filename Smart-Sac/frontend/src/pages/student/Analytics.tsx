@@ -149,11 +149,6 @@ const Analytics = () => {
               <option value="Squash">Squash</option>
               <option value="Chess">Chess</option>
             </optgroup>
-            <optgroup label="Rooms">
-              <option value="Music Room">Music Room</option>
-              <option value="Drama Room">Drama Room</option>
-              <option value="Dance Studio">Dance Studio</option>
-            </optgroup>
           </select>
         </div>
 

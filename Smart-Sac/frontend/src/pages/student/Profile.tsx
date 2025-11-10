@@ -81,7 +81,6 @@ const StudentProfile: React.FC = () => {
     fullname: "",
     username: "",
     roll_no: "",
-    email: "",
     phone_number: "",
     games: [] as UserGame[],
     achievements: [] as string[]
@@ -100,7 +99,6 @@ const StudentProfile: React.FC = () => {
         fullname: u.fullname ?? "",
         username: u.username ?? "",
         roll_no: u.roll_no ?? "",
-        email: u.email ?? "",
         phone_number: u.phone_number ?? "",
         games: Array.isArray(u.games) ? u.games : [],
         achievements: Array.isArray(u.achievements) ? u.achievements : []
@@ -287,12 +285,7 @@ const StudentProfile: React.FC = () => {
                   onChange={(e) => handleChange("roll_no", e.target.value)} 
                   placeholder="Roll Number"
                 />
-                <Input 
-                  value={form.email} 
-                  onChange={(e) => handleChange("email", e.target.value)} 
-                  placeholder="Email"
-                  type="email"
-                />
+                
                 <Input 
                   value={form.phone_number} 
                   onChange={(e) => handleChange("phone_number", e.target.value)} 
@@ -337,7 +330,6 @@ const StudentProfile: React.FC = () => {
                           fullname: u.fullname ?? "",
                           username: u.username ?? "",
                           roll_no: u.roll_no ?? "",
-                          email: u.email ?? "",
                           phone_number: u.phone_number ?? "",
                           games: Array.isArray(u.games) ? u.games : [],
                           achievements: Array.isArray(u.achievements) ? u.achievements : []

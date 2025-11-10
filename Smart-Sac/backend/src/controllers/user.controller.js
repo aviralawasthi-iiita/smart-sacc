@@ -445,6 +445,11 @@ const resetPassword = asyncHandler(async (req, res) => {
   if (newPassword !== confirmPassword) {
     throw new ApiError(400, "Passwords do not match");
   }
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(newPassword)) {
+        throw new ApiError(400, "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character");
+    }
+
   const user = await User.findOne({
     passwordResetToken: token,
     passwordResetExpires: { $gt: Date.now() },
@@ -490,7 +495,7 @@ const getCurrentUser = asyncHandler(async(req,res) => {
     )
 })
 const updateAccountDetails = asyncHandler(async (req, res) => {
-  const allowedFields = ["email", "phone_number", "fullname", "roll_no", "achievements"];
+  const allowedFields = ["phone_number", "fullname", "roll_no", "achievements"];
   const updates = {};
   console.log(req.body);
   for (const field of allowedFields) {
@@ -498,6 +503,10 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
       updates[field] = req.body[field].toString().trim();
     }
   }
+  const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(updates.phone_number)) {
+        throw new ApiError(400, "Phone number must be 10 digits");
+    }
   const games = req.body.games; 
   if (games) {
     if (!Array.isArray(games)) {
