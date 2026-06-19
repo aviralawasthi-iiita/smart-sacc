@@ -2,6 +2,7 @@ import {asyncHandler} from "../utils/asyncHandler.js"
 import {ApiError} from "../utils/ApiError.js"
 import jwt from "jsonwebtoken"
 import {Admin} from "../models/admin.model.js"
+import { getCache, setCache } from "../db/redis.js"
 
 export const verifyJWT = asyncHandler(async (req,res,next) => {
     try {
@@ -10,8 +11,19 @@ export const verifyJWT = asyncHandler(async (req,res,next) => {
             throw new ApiError(401,"unaothorize request");
         }
         const decodedToken = await jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-        const user = await Admin.findById(decodedToken?._id).select("-refreshToken");
-    
+
+        // Try Redis cache first
+        const cacheKey = `admin:${decodedToken._id}`;
+        let user = await getCache(cacheKey);
+
+        if (!user) {
+            // Cache miss — query MongoDB
+            user = await Admin.findById(decodedToken?._id).select("-refreshToken");
+            if (user) {
+                await setCache(cacheKey, user.toJSON ? user.toJSON() : user, 300);
+            }
+        }
+
         if(!user){
             throw new ApiError(401,"invalid Acces TOken");
         }

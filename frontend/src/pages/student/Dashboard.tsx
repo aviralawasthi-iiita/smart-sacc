@@ -20,7 +20,13 @@ import React from "react";
 import { toast as sonner } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 interface ApiPlayer {
   _id: string;
   fullname: string;
@@ -262,32 +268,44 @@ const StudentDashboard = () => {
 
           <div
             key={showOnlyAvailable ? "available" : "all"}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in"
+            className="w-full px-4 md:px-12 animate-fade-in"
           >
-            {equipment
-              .filter((eq) => !showOnlyAvailable || eq.status === "available")
-              .map((equipment) => (
-                <EquipmentCard
-                  key={equipment._id}
-                  equipmentId={equipment._id}
-                  name={equipment.name}
-                  status={equipment.status === "broken" ? "maintenance" : equipment.status}
-                  currentUser={
-                    equipment.user
-                      ? equipment.user.fullname
-                      : equipment.unregisteredName
-                      ? equipment.unregisteredName
-                      : undefined
-                  }
-                  contact={equipment.user?.phone_number || equipment.unregisteredPhone}
-                  timeUsed={equipment.duration}
-                  rollNumber={equipment.roll_no}
-                  duration={equipment.duration}
-                  icon={getEquipmentIcon(equipment.name)}
-                  // Remove onBook and isBooking props, and add:
-                  bookingText="booking can only be done via admin(guard)"
-                />
-              ))}
+            {equipment.filter((eq) => !showOnlyAvailable || eq.status === "available").length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                No equipment found.
+              </p>
+            ) : (
+              <div className={`grid ${showOnlyAvailable ? "grid-rows-2" : "grid-rows-1"} grid-flow-col gap-4 overflow-x-auto pb-4 snap-x hide-scrollbar`} style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {equipment
+                  .filter((eq) => !showOnlyAvailable || eq.status === "available")
+                  .sort((a, b) => {
+                    const order: Record<string, number> = { "in-use": 1, available: 2, broken: 3 };
+                    return (order[a.status] || 4) - (order[b.status] || 4);
+                  })
+                  .map((equipment) => (
+                    <div key={equipment._id} className="w-[85vw] sm:w-[45vw] lg:w-[30vw] xl:w-[22vw] snap-start">
+                      <EquipmentCard
+                        equipmentId={equipment._id}
+                        name={equipment.name}
+                        status={equipment.status === "broken" ? "maintenance" : equipment.status}
+                        currentUser={
+                          equipment.user
+                            ? equipment.user.fullname
+                            : equipment.unregisteredName
+                            ? equipment.unregisteredName
+                            : undefined
+                        }
+                        contact={equipment.user?.phone_number || equipment.unregisteredPhone}
+                        timeUsed={equipment.duration}
+                        rollNumber={equipment.roll_no}
+                        duration={equipment.duration}
+                        icon={getEquipmentIcon(equipment.name)}
+                        bookingText="booking can only be done via admin(guard)"
+                      />
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -355,33 +373,32 @@ const StudentDashboard = () => {
               No games available yet.
             </p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-slide-up">
-              {gamesData.map((game) => (
-                <Card
-                  key={game._id}
-                  className="border-2 rounded-lg" // Removed hover effects and cursor-pointer
-                >
-                  <CardHeader className="p-4 pb-2">
-                    <CardTitle className="capitalize text-lg font-semibold">
-                      {game.name}
-                    </CardTitle>
-                    {game.category && (
-                      <p className="text-sm text-muted-foreground">{game.category}</p>
-                    )}
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0 flex justify-between items-center">
-                    {game.description ? (
-                      <span className="text-sm text-muted-foreground">
-                        {game.description}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">
-                      
-                      </span>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="w-full px-4 md:px-12 animate-slide-up">
+              <div className="grid grid-rows-2 grid-flow-col gap-4 overflow-x-auto pb-4 snap-x hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {gamesData.map((game) => (
+                  <div key={game._id} className="w-[85vw] sm:w-[45vw] lg:w-[30vw] xl:w-[22vw] snap-start">
+                    <Card className="border-2 rounded-lg h-full flex flex-col">
+                      <CardHeader className="p-4 pb-2">
+                        <CardTitle className="capitalize text-lg font-semibold">
+                          {game.name}
+                        </CardTitle>
+                        {game.category && (
+                          <p className="text-sm text-muted-foreground">{game.category}</p>
+                        )}
+                      </CardHeader>
+                      <CardContent className="p-4 pt-0 flex-grow">
+                        {game.description ? (
+                          <span className="text-sm text-muted-foreground line-clamp-3">
+                            {game.description}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground"></span>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

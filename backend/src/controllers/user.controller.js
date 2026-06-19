@@ -13,6 +13,7 @@ import { randomBytes } from "crypto";
 import { Game } from "../models/game.model.js";
 import dns from "dns/promises";
 import bcrypt from "bcrypt";
+import { getCache, setCache, delCache, delCachePattern } from "../db/redis.js";
 
 const generateAccessTokenAndRefreshTokens = async (userId) => {
   try {
@@ -183,6 +184,9 @@ const loginUser = asyncHandler(async (req, res) => {
 
   const loggedinUser = await User.findById(user._id).select("-password -refreshToken");
 
+  // Cache user data for auth middleware
+  await setCache(`user:${user._id}`, loggedinUser.toJSON ? loggedinUser.toJSON() : loggedinUser, 300);
+
   const options = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -328,7 +332,8 @@ const resendVerificationEmail = asyncHandler(async (req, res) => {
 
 
 const logoutUser = asyncHandler(async (req, res) => {
-  await User.findByIdAndUpdate(req.user._id || req.body.user,
+  const userId = req.user._id || req.body.user;
+  await User.findByIdAndUpdate(userId,
     {
       $set: {
         refreshToken: undefined
@@ -338,6 +343,10 @@ const logoutUser = asyncHandler(async (req, res) => {
       new: true
     }
   );
+
+  // Invalidate user cache on logout
+  await delCache(`user:${userId}`);
+
   const options = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -611,6 +620,9 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
     { new: true }
   );
 
+  // Invalidate caches affected by profile update
+  await delCache(`user:${req.user._id}`);
+  await delCache(`players:all`);
 
   return res
     .status(200)
@@ -621,6 +633,15 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 const dashboardDetails = asyncHandler(async (req, res) => {
   const user = req.user;
   if (!user) throw new ApiError(500, "no user found");
+
+  // Try cache first (per-user dashboard, TTL 1 min)
+  const cacheKey = `user:dashboard:${user._id}`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(
+      new ApiResponse(200, cached, "Dashboard details sent (cached)")
+    );
+  }
 
   const [
     numberOfUnreadMessages,
@@ -634,21 +655,30 @@ const dashboardDetails = asyncHandler(async (req, res) => {
     Announcement.find().sort({ createdAt: -1 }).limit(2).lean()
   ]);
 
+  const dashboardData = {
+    unreadMessages: numberOfUnreadMessages,
+    openTickets: numberOfOpenTickets,
+    equipment,
+    announcements
+  };
+
+  await setCache(cacheKey, dashboardData, 60);
+
   return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        unreadMessages: numberOfUnreadMessages,
-        openTickets: numberOfOpenTickets,
-        equipment,
-        announcements
-      },
-      "Dashboard details sent"
-    )
+    new ApiResponse(200, dashboardData, "Dashboard details sent")
   );
 });
 
 const getAllPlayers = asyncHandler(async (req, res) => {
+  // Try cache first (TTL 3 min)
+  const cacheKey = `players:all`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(
+      new ApiResponse(200, cached, "Players fetched successfully (cached)")
+    );
+  }
+
   const players = await User.find({ _id: { $ne: req.user._id } }).select("fullname games").populate('games.game', 'name category');
   if (!players) {
     throw new ApiError(404, "No players found");
@@ -661,6 +691,8 @@ const getAllPlayers = asyncHandler(async (req, res) => {
     }
     return playerObj;
   });
+
+  await setCache(cacheKey, cleanedPlayers, 180);
 
   return res.status(200).json(
     new ApiResponse(200, cleanedPlayers, "Players fetched successfully")
@@ -945,7 +977,18 @@ const brokenEquipmentTicket = asyncHandler(async (req, res) => {
 
 
 const getGames = asyncHandler(async (req, res) => {
+  // Try cache first (TTL 10 min)
+  const cacheKey = `games:all`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(
+      new ApiResponse(200, cached, "Games fetched successfully (cached)")
+    );
+  }
+
   const games = await Game.find().lean();
+  await setCache(cacheKey, games, 600);
+
   return res.status(200).json(
     new ApiResponse(200, games, "Games fetched successfully")
   );
@@ -956,24 +999,33 @@ const getAnnouncements = asyncHandler(async (req, res) => {
   const limit = 10;
   const skip = (page - 1) * limit;
 
+  // Try cache first (TTL 5 min)
+  const cacheKey = `announcements:page:${page}`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(
+      new ApiResponse(200, cached, "Announcements fetched successfully (cached)")
+    );
+  }
+
   const total = await Announcement.countDocuments();
   const announcements = await Announcement.find()
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
 
+  const announcementData = {
+    announcements,
+    currentPage: page,
+    totalPages: Math.ceil(total / limit),
+    totalAnnouncements: total,
+    hasNextPage: page * limit < total
+  };
+
+  await setCache(cacheKey, announcementData, 300);
+
   return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        announcements,
-        currentPage: page,
-        totalPages: Math.ceil(total / limit),
-        totalAnnouncements: total,
-        hasNextPage: page * limit < total
-      },
-      "Announcements fetched successfully"
-    )
+    new ApiResponse(200, announcementData, "Announcements fetched successfully")
   );
 });
 

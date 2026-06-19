@@ -1,6 +1,7 @@
 import dotenv from "dotenv"
 import { createServer } from "http";
 import connectDB from "./db/index.js";
+import { connectRedis } from "./db/redis.js";
 import { app } from "./app.js";
 import { initSocket } from "./socket.js";
 
@@ -10,7 +11,10 @@ dotenv.config({
 
 const httpServer = createServer(app);
 
-connectDB().then(()=>{
+connectDB().then(async () => {
+    // Connect Redis (non-blocking — app works without it)
+    await connectRedis();
+
     // Initialise Socket.IO on the shared HTTP server
     initSocket(httpServer);
 
@@ -21,3 +25,4 @@ connectDB().then(()=>{
 .catch((err) => {
     console.log("mongo db connection failed in app listend thing", err);
 });
+

@@ -11,6 +11,7 @@ import { Equipment } from "../models/equipment.model.js";
 import { Announcement } from "../models/announcement.model.js";
 import { User } from "../models/user.model.js";
 import { Game } from "../models/game.model.js";
+import { getCache, setCache, delCache, delCachePattern } from "../db/redis.js";
 const generateAccessTokenAndRefreshTokens = async (userId) => {
   try {
     const user = await Admin.findById(userId);
@@ -182,6 +183,15 @@ const dashboardDetails = asyncHandler(async (req, res) => {
   const user = req.user;
   if (!user) throw new ApiError(401, "Unauthorized");
 
+  // Try cache first (global admin dashboard, TTL 1 min)
+  const cacheKey = `admin:dashboard`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(
+      new ApiResponse(200, cached, "Dashboard details sent (cached)")
+    );
+  }
+
   const [equipment, announcements, ticket, equipmentHistory] = await Promise.all(
     [
       Equipment.find().lean(),
@@ -196,14 +206,13 @@ const dashboardDetails = asyncHandler(async (req, res) => {
     ]
   );
 
+  const dashboardData = { equipment, announcements, ticket, equipmentHistory };
+  await setCache(cacheKey, dashboardData, 60);
+
   return res
     .status(200)
     .json(
-      new ApiResponse(
-        200,
-        { equipment, announcements, ticket, equipmentHistory },
-        "Dashboard details sent"
-      )
+      new ApiResponse(200, dashboardData, "Dashboard details sent")
     );
 });
 
@@ -286,6 +295,12 @@ const updateEquipment = asyncHandler(async (req, res) => {
 
   await equipmentDoc.save();
 
+  // Invalidate equipment and dashboard caches
+  await delCache(`equipment:all`);
+  await delCache(`admin:dashboard`);
+  await delCachePattern(`user:dashboard:*`);
+  await delCachePattern(`equipment:history:*`);
+
   const responseData = {
     equipment: equipmentDoc,
     registered,
@@ -310,7 +325,18 @@ const checkUserByRollNo = asyncHandler(async (req, res) => {
 });
 
 const getEquipment = asyncHandler(async (req, res) => {
+  // Try cache first (TTL 2 min)
+  const cacheKey = `equipment:all`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(
+      new ApiResponse(200, cached, "Equipments fetched successfully (cached)")
+    );
+  }
+
   const equipments = await Equipment.find().populate("user", "fullname phone_number roll_no").lean();
+  await setCache(cacheKey, equipments, 120);
+
   return res
     .status(200)
     .json(new ApiResponse(200, equipments, "Equipments fetched successfully"));
@@ -330,6 +356,10 @@ const addGame = asyncHandler(async (req, res) => {
   }
 
   const game = await Game.create({ name: key });
+
+  // Invalidate games cache
+  await delCache(`games:all`);
+
   return res
     .status(201)
     .json(new ApiResponse(201, game, "Game created successfully"));
@@ -350,6 +380,11 @@ const removeGame = asyncHandler(async (req, res) => {
 
   await Equipment.deleteMany({ _id: { $in: game.equipment } });
   await Game.deleteOne({ _id: game._id });
+
+  // Invalidate games and equipment caches
+  await delCache(`games:all`);
+  await delCache(`equipment:all`);
+  await delCache(`admin:dashboard`);
 
   return res
     .status(200)
@@ -379,6 +414,11 @@ const addEquipment = asyncHandler(async (req, res) => {
   });
   game.equipment.push(equipment._id);
   await game.save();
+
+  // Invalidate equipment and games caches
+  await delCache(`equipment:all`);
+  await delCache(`games:all`);
+  await delCache(`admin:dashboard`);
 
   return res
     .status(201)
@@ -421,6 +461,11 @@ const removeEquipment = asyncHandler(async (req, res) => {
   await game.save();
   await Equipment.findByIdAndDelete(equipment._id);
 
+  // Invalidate equipment and games caches
+  await delCache(`equipment:all`);
+  await delCache(`games:all`);
+  await delCache(`admin:dashboard`);
+
   const updatedGame = await Game.findById(game._id).populate("equipment");
 
   return res
@@ -457,6 +502,11 @@ const makeAnnouncement = asyncHandler(async (req, res) => {
     expireAt: expirationDate,
   });
 
+  // Invalidate announcements caches
+  await delCachePattern(`announcements:*`);
+  await delCachePattern(`admin:announcements:*`);
+  await delCache(`admin:dashboard`);
+
   return res
     .status(201)
     .json(
@@ -473,17 +523,29 @@ const getAnnouncements = asyncHandler(async (req, res) => {
   const limit = 10;
   const skip = (page - 1) * limit;
 
+  // Try cache first (TTL 5 min)
+  const cacheKey = `admin:announcements:page:${page}`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(
+      new ApiResponse(200, cached, "Announcements fetched successfully (cached)")
+    );
+  }
+
   const announcements = await Announcement.find()
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
+
+  const announcementData = { announcements, currentPage: page };
+  await setCache(cacheKey, announcementData, 300);
 
   return res
     .status(200)
     .json(
       new ApiResponse(
         200,
-        { announcements, currentPage: page },
+        announcementData,
         "Announcements fetched successfully"
       )
     );
@@ -515,6 +577,11 @@ const deleteAnnouncement = asyncHandler(async (req, res) => {
 
   await announcement.deleteOne();
 
+  // Invalidate announcements caches
+  await delCachePattern(`announcements:*`);
+  await delCachePattern(`admin:announcements:*`);
+  await delCache(`admin:dashboard`);
+
   return res
     .status(200)
     .json(new ApiResponse(200, null, "Announcement deleted successfully"));
@@ -540,6 +607,9 @@ const updateTicket = asyncHandler(async (req, res) => {
 
   ticket.status = newStatus;
   await ticket.save();
+
+  // Invalidate admin dashboard cache
+  await delCache(`admin:dashboard`);
 
   return res
     .status(200)
@@ -674,6 +744,15 @@ const getEquipmentHistory = asyncHandler(async (req, res) => {
   const limit = 10;
   const skip = (page - 1) * limit;
 
+  // Try cache first (TTL 2 min)
+  const cacheKey = `equipment:history:${equipmentId}:page:${page}`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(
+      new ApiResponse(200, cached, "Equipment history fetched successfully (cached)")
+    );
+  }
+
   const equipment = await Equipment.findById(equipmentId);
   if (!equipment) throw new ApiError(404, "Equipment not found");
 
@@ -683,13 +762,15 @@ const getEquipmentHistory = asyncHandler(async (req, res) => {
     .limit(limit)
     .populate("user", "name email roll_no");
 
-  console.log(history);
+  const historyData = { history, currentPage: page };
+  await setCache(cacheKey, historyData, 120);
+
   return res
     .status(200)
     .json(
       new ApiResponse(
         200,
-        { history, currentPage: page },
+        historyData,
         "Equipment history fetched successfully"
       )
     );
