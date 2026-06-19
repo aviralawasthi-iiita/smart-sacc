@@ -47,6 +47,8 @@ interface ApiEquipment {
   user?: { fullname: string; roll_no: string; phone_number: string };
   duration?: string;
   roll_no?: string;
+  unregisteredName?: string;
+  unregisteredPhone?: string;
 }
 
 interface DashboardData {
@@ -272,10 +274,12 @@ const StudentDashboard = () => {
                   status={equipment.status === "broken" ? "maintenance" : equipment.status}
                   currentUser={
                     equipment.user
-                      ? `${equipment.user.fullname} (${equipment.roll_no})`
+                      ? equipment.user.fullname
+                      : equipment.unregisteredName
+                      ? equipment.unregisteredName
                       : undefined
                   }
-                  contact={equipment.user?.phone_number}
+                  contact={equipment.user?.phone_number || equipment.unregisteredPhone}
                   timeUsed={equipment.duration}
                   rollNumber={equipment.roll_no}
                   duration={equipment.duration}
@@ -296,7 +300,12 @@ const StudentDashboard = () => {
               <Megaphone className="w-4 h-4" />
               <span className="text-xs font-semibold">What's New</span>
             </div>
-            <h2 className="text-3xl md:text-4xl font-extrabold mb-3">Announcements</h2>
+            <h2 
+              className="text-3xl md:text-4xl font-extrabold mb-3 cursor-pointer hover:underline hover:text-primary transition-colors"
+              onClick={() => navigate("/announcements")}
+            >
+              Announcements
+            </h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl mx-auto">

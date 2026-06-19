@@ -22,6 +22,7 @@ const StudentLogin = () => {
       // Navigation happens inside the context on success
     } catch (error) {
       console.error("Login failed", error);
+    } finally {
       setIsLoading(false);
     }
   };

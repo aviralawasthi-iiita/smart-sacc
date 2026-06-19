@@ -102,6 +102,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         error?.message ||
         "Login failed. Please check your credentials.";
       toast.error(message);
+      throw error;
     }
   };
 

@@ -23,7 +23,15 @@ const equipmentSchema = new mongoose.Schema({
     },
     duration:{
         type: String
-    }, 
+    },
+    unregisteredName: {
+        type: String,
+        default: null,
+    },
+    unregisteredPhone: {
+        type: String,
+        default: null,
+    },
 },{timestamps:true}
 )
 

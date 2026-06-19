@@ -13,6 +13,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -31,16 +37,16 @@ interface Ticket {
   heading: string;
   content: string;
   status: "open" | "in-process" | "closed";
-  equipment: {
+  equipment?: {
     _id: string;
     name: string;
-  };
-  sender: {
+  } | null;
+  sender?: {
     _id: string;
     fullname: string;
     email: string;
     roll_no: string;
-  };
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,7 +54,7 @@ interface Ticket {
 const AdminTickets = () => {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("open");
   const [searchQuery, setSearchQuery] = useState("");
 
   const queryClient = useQueryClient();
@@ -56,10 +62,10 @@ const AdminTickets = () => {
 
   // 🔹 Fetch all tickets for admin - USING DIRECT API CALL LIKE ANNOUNCEMENTS
   const { data: tickets, isLoading, error } = useQuery<Ticket[]>({
-    queryKey: ["adminTickets"],
+    queryKey: ["adminTickets", statusFilter],
     queryFn: async () => {
       try {
-        const res = await api.get("/admin/get-active-tickets");
+        const res = await api.get(`/admin/get-active-tickets?status=${statusFilter}`);
         // Handle different response structures
         return res.data?.tickets || res.tickets || res.data || res;
       } catch (err: any) {
@@ -138,9 +144,9 @@ const AdminTickets = () => {
   // Filter tickets based on search and status
   const filteredTickets = tickets?.filter(ticket => {
     const matchesSearch = 
-      ticket.heading.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ticket.equipment.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (ticket.sender.fullname && ticket.sender.fullname.toLowerCase().includes(searchQuery.toLowerCase()));
+      (ticket.heading || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (ticket.equipment?.name || "General/Other").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (ticket.sender?.fullname && ticket.sender.fullname.toLowerCase().includes(searchQuery.toLowerCase()));
     
     const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
     
@@ -234,7 +240,6 @@ const AdminTickets = () => {
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="open">Open</SelectItem>
                   <SelectItem value="in-process">In process</SelectItem>
                   <SelectItem value="closed">Closed</SelectItem>
@@ -282,12 +287,12 @@ const AdminTickets = () => {
                               </p>
                               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                                 <Badge variant="outline" className="capitalize">
-                                  {ticket.equipment.name}
+                                  {ticket.equipment?.name || "General/Other"}
                                 </Badge>
-                                <span>By: {ticket.sender.fullname}</span>
-                                <span>Roll No: {ticket.sender.roll_no}</span>
+                                <span>By: {ticket.sender?.fullname || "Unknown"}</span>
+                                <span>Roll No: {ticket.sender?.roll_no || "N/A"}</span>
                                 <span>
-                                  {new Date(ticket.createdAt).toLocaleDateString()}
+                                  {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}
                                 </span>
                               </div>
                             </div>
@@ -314,20 +319,28 @@ const AdminTickets = () => {
                             
                             {/* Quick Status Update */}
                             {ticket.status !== "closed" && (
-                              <Select
-                                value=""
-                                onValueChange={(newStatus) => 
-                                  handleStatusUpdate(ticket._id, newStatus)
-                                }
-                              >
-                                <SelectTrigger className="w-32">
-                                  <SelectValue placeholder="Actions" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="in-process">Mark In process</SelectItem>
-                                  <SelectItem value="closed">Close</SelectItem>
-                                </SelectContent>
-                              </Select>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="outline" size="sm">
+                                    Actions
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {ticket.status === "open" && (
+                                    <DropdownMenuItem onClick={() => handleStatusUpdate(ticket._id, "in-process")}>
+                                      Mark In process
+                                    </DropdownMenuItem>
+                                  )}
+                                  {ticket.status === "in-process" && (
+                                    <DropdownMenuItem onClick={() => handleStatusUpdate(ticket._id, "open")}>
+                                      Mark Open
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem onClick={() => handleStatusUpdate(ticket._id, "closed")}>
+                                    Close Ticket
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             )}
                           </div>
                         </div>
@@ -348,7 +361,7 @@ const AdminTickets = () => {
                 <DialogHeader>
                   <DialogTitle>{selectedTicket.heading}</DialogTitle>
                   <DialogDescription>
-                    Equipment: {selectedTicket.equipment.name}
+                    Equipment: {selectedTicket.equipment?.name || "General/Other"}
                   </DialogDescription>
                 </DialogHeader>
                 
@@ -363,20 +376,20 @@ const AdminTickets = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Reported By</Label>
-                      <p className="text-sm mt-1">{selectedTicket.sender.fullname}</p>
+                      <p className="text-sm mt-1">{selectedTicket.sender?.fullname || "Unknown"}</p>
                     </div>
                     <div>
                       <Label>Roll Number</Label>
-                      <p className="text-sm mt-1">{selectedTicket.sender.roll_no}</p>
+                      <p className="text-sm mt-1">{selectedTicket.sender?.roll_no || "N/A"}</p>
                     </div>
                     <div>
                       <Label>Email</Label>
-                      <p className="text-sm mt-1">{selectedTicket.sender.email}</p>
+                      <p className="text-sm mt-1">{selectedTicket.sender?.email || "N/A"}</p>
                     </div>
                     <div>
                       <Label>Reported On</Label>
                       <p className="text-sm mt-1">
-                        {new Date(selectedTicket.createdAt).toLocaleString()}
+                        {selectedTicket.createdAt ? new Date(selectedTicket.createdAt).toLocaleString() : ""}
                       </p>
                     </div>
                   </div>
@@ -390,22 +403,7 @@ const AdminTickets = () => {
                     </div>
                   </div>
                   
-                  <div>
-                    <Label>Update Status</Label>
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      {["open", "in-process", "closed"].map((status) => (
-                        <Button
-                          key={status}
-                          variant={selectedTicket.status === status ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleStatusUpdate(selectedTicket._id, status)}
-                          disabled={updateTicketMutation.isPending}
-                        >
-                          {status.replace("-", " ")}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
+
                 </div>
                 
                 <DialogFooter>

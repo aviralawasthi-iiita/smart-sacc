@@ -11,8 +11,13 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 
 interface AdminDashboardData {
   equipment: {
@@ -66,6 +71,18 @@ const fetchEquipmentHistory = async (): Promise<EquipmentHistoryResponse> => {
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const queryClient = useQueryClient();
+
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState<1 | 2>(1);
+  const [selectedEquipment, setSelectedEquipment] = useState<any>(null);
+  const [rollNo, setRollNo] = useState("");
+  const [duration, setDuration] = useState<number[]>([60]);
+  const [fetchedUser, setFetchedUser] = useState<any>(null);
+  const [manualName, setManualName] = useState("");
+  const [manualPhone, setManualPhone] = useState("");
+  const [checkingUser, setCheckingUser] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const { data, isLoading, error } = useQuery<AdminDashboardData>({
     queryKey: ["adminDashboard"],
@@ -81,6 +98,90 @@ const AdminDashboard = () => {
     queryKey: ["equipmentHistory"],
     queryFn: fetchEquipmentHistory,
   });
+
+  const handleEquipmentClick = (item: any) => {
+    if (item.status === "available") {
+      setSelectedEquipment(item);
+      setCheckoutStep(1);
+      setRollNo("");
+      setDuration([60]);
+      setFetchedUser(null);
+      setManualName("");
+      setManualPhone("");
+      setCheckoutOpen(true);
+    } else if (item.status === "in-use") {
+      handleReturnEquipment(item._id);
+    }
+  };
+
+  const handleReturnEquipment = async (id: string) => {
+    if (!window.confirm("Mark this equipment as returned?")) return;
+    try {
+      await api.post("/admin/update-equipment", {
+        equipmentid: id,
+        status: "available",
+      });
+      queryClient.invalidateQueries({ queryKey: ["adminDashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["equipmentHistory"] });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleContinueToStep2 = async () => {
+    if (!rollNo) return;
+    setCheckingUser(true);
+    try {
+      const res: any = await api.get(`/admin/check-user/${rollNo}`);
+      if (res.exists) {
+        setFetchedUser(res.user);
+      } else {
+        setFetchedUser(null);
+      }
+      setCheckoutStep(2);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCheckingUser(false);
+    }
+  };
+
+  const handleAssignEquipment = async () => {
+    if (!selectedEquipment) return;
+    if (!fetchedUser) {
+      if (!manualName.trim()) {
+        sonner.error("Full name is required");
+        return;
+      }
+      const phoneRegex = /^\d{10}$/;
+      if (!phoneRegex.test(manualPhone)) {
+        sonner.error("Phone number must be exactly 10 digits");
+        return;
+      }
+    }
+    setSubmitting(true);
+    try {
+      const payload: any = {
+        equipmentid: selectedEquipment._id,
+        status: "in-use",
+        roll_no: rollNo,
+        duration: duration[0].toString() + " mins",
+      };
+      if (!fetchedUser) {
+        payload.unregisteredName = manualName;
+        payload.unregisteredPhone = manualPhone;
+      }
+      await api.post("/admin/update-equipment", payload);
+      queryClient.invalidateQueries({ queryKey: ["adminDashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["equipmentHistory"] });
+      setCheckoutOpen(false);
+    } catch (err) {
+      console.error(err);
+      sonner.error("Failed to assign equipment");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const stats = {
     activeCheckouts:
@@ -275,20 +376,24 @@ const AdminDashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Activity className="w-5 h-5 text-primary" />
-                Equipment Status
+                Quick Assign/Return
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 h-[300px] overflow-y-auto pr-2">
               {isLoading && <p>Loading equipment...</p>}
               {error && (
                 <p className="text-destructive">
                   Could not load equipment.
                 </p>
               )}
-              {data?.equipment.map((item) => (
+              {(data?.equipment ? [...data.equipment].sort((a, b) => {
+                const weights = { "in-use": 1, "available": 2, "broken": 3 };
+                return weights[a.status] - weights[b.status];
+              }) : []).map((item) => (
                 <div
                   key={item._id}
-                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/30 transition"
+                  onClick={() => handleEquipmentClick(item)}
+                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/30 transition cursor-pointer"
                 >
                   <span className="font-medium capitalize">{item.name}</span>
                   <span
@@ -343,6 +448,22 @@ const AdminDashboard = () => {
                           <span className="font-medium capitalize min-w-[120px]">
                             {item.equipment?.name}
                           </span>
+                          {item.previousStatus && (
+                            <>
+                              <span
+                                className={`text-sm font-semibold px-2 py-1 rounded ${
+                                  item.previousStatus === "available"
+                                    ? "bg-green-100 text-green-800"
+                                    : item.previousStatus === "in-use"
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {item.previousStatus}
+                              </span>
+                              <span className="text-muted-foreground font-bold mx-1">→</span>
+                            </>
+                          )}
                           <span
                             className={`text-sm font-semibold px-2 py-1 rounded ${
                               item.status === "available"
@@ -355,16 +476,20 @@ const AdminDashboard = () => {
                             {item.status}
                           </span>
                           {item.duration && (
-                            <span className="text-sm text-muted-foreground">
+                            <span className="text-sm text-muted-foreground ml-2">
                               Duration: {item.duration}
                             </span>
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          {item.user ? (
+                          {(item.status !== "in-use" && item.previousStatus !== "in-use") ? (
+                            "System"
+                          ) : item.user ? (
                             <>By: {item.user.name} ({item.user.roll_no})</>
                           ) : item.roll_no ? (
                             <>By: Roll No: {item.roll_no}</>
+                          ) : item.unregisteredName ? (
+                            <>By: {item.unregisteredName}</>
                           ) : (
                             "System"
                           )}
@@ -379,6 +504,80 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
         </section>
+
+        {/* Checkout Dialog */}
+        <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Checkout {selectedEquipment?.name}</DialogTitle>
+            </DialogHeader>
+            {checkoutStep === 1 ? (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Roll Number</Label>
+                  <Input
+                    placeholder="e.g. 21BCE1234"
+                    value={rollNo}
+                    onChange={(e) => setRollNo(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Duration: {duration[0]} mins</Label>
+                  <Slider
+                    value={duration}
+                    onValueChange={setDuration}
+                    max={300}
+                    step={15}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleContinueToStep2} disabled={!rollNo || checkingUser}>
+                    {checkingUser ? "Checking..." : "Continue"}
+                  </Button>
+                </DialogFooter>
+              </div>
+            ) : (
+              <div className="space-y-4 py-4">
+                {fetchedUser ? (
+                  <div className="space-y-2 bg-muted/50 p-4 rounded-lg">
+                    <p className="font-medium text-sm text-muted-foreground">User Found</p>
+                    <p><strong>Name:</strong> {fetchedUser.fullname}</p>
+                    <p><strong>Phone:</strong> {fetchedUser.phone_number}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">User not found. Please enter details manually.</p>
+                    <div className="space-y-2">
+                      <Label>Full Name</Label>
+                      <Input
+                        placeholder="Name"
+                        value={manualName}
+                        onChange={(e) => setManualName(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phone Number</Label>
+                      <Input
+                        placeholder="Phone"
+                        value={manualPhone}
+                        onChange={(e) => setManualPhone(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setCheckoutStep(1)}>Back</Button>
+                  <Button 
+                    onClick={handleAssignEquipment} 
+                    disabled={submitting || (!fetchedUser && (!manualName || !manualPhone))}
+                  >
+                    {submitting ? "Assigning..." : "Assign Equipment"}
+                  </Button>
+                </DialogFooter>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

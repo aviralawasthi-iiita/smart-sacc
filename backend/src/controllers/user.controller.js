@@ -42,6 +42,10 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields are required");
   }
 
+  if (username.includes("@")) {
+    throw new ApiError(400, "Username cannot contain '@'");
+  }
+
   const phoneRegex = /^\d{10}$/;
   if (!phoneRegex.test(phone_number)) {
     throw new ApiError(400, "Phone number must be 10 digits");
@@ -723,6 +727,9 @@ const sendMessage = asyncHandler(async (req, res) => {
 
 const getConversations = asyncHandler(async (req, res) => {
   const userId = req.user._id;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const skip = (page - 1) * limit;
 
   const conversations = await Message.aggregate([
     {
@@ -791,6 +798,12 @@ const getConversations = asyncHandler(async (req, res) => {
     },
     {
       $sort: { lastMessageCreatedAt: -1 }
+    },
+    {
+      $skip: skip
+    },
+    {
+      $limit: limit
     }
   ]);
 
@@ -801,6 +814,9 @@ const getConversations = asyncHandler(async (req, res) => {
 const getMessages = asyncHandler(async (req, res) => {
   const { otherUserId } = req.params;
   const userId = req.user._id;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 30;
+  const skip = (page - 1) * limit;
 
   if (!otherUserId) {
     throw new ApiError(400, "The other user's ID is required");
@@ -822,7 +838,12 @@ const getMessages = asyncHandler(async (req, res) => {
       { sender: userId, receiver: otherUserId },
       { sender: otherUserId, receiver: userId }
     ]
-  }).sort({ createdAt: "asc" });
+  })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  messages.reverse();
 
   return res.status(200).json(
     new ApiResponse(200, messages, "Messages fetched successfully")
@@ -930,6 +951,32 @@ const getGames = asyncHandler(async (req, res) => {
   );
 });
 
+const getAnnouncements = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = 10;
+  const skip = (page - 1) * limit;
+
+  const total = await Announcement.countDocuments();
+  const announcements = await Announcement.find()
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        announcements,
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalAnnouncements: total,
+        hasNextPage: page * limit < total
+      },
+      "Announcements fetched successfully"
+    )
+  );
+});
+
 export {
   registerUser,
   loginUser,
@@ -948,6 +995,7 @@ export {
   getConversations,
   getMessages,
   getGames,
+  getAnnouncements,
   brokenEquipmentTicket,
   verifyEmail,
   resendVerificationEmail

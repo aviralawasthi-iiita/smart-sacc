@@ -209,7 +209,7 @@ const dashboardDetails = asyncHandler(async (req, res) => {
 
 
 const updateEquipment = asyncHandler(async (req, res) => {
-  const { status, equipmentid, roll_no, duration } = req.body;
+  const { status, equipmentid, roll_no, duration, unregisteredName, unregisteredPhone } = req.body;
 
   if (!status) throw new ApiError(400, "Status is required");
   if (!equipmentid) throw new ApiError(400, "Equipment ID is required");
@@ -220,43 +220,67 @@ const updateEquipment = asyncHandler(async (req, res) => {
   let user = null;
   let registered = false;
 
+  let actualDuration = null;
+  if (equipmentDoc.status === "in-use") {
+      const lastHistory = await EquipmentHistory.findOne({ equipment: equipmentDoc._id }).sort({ changedAt: -1 });
+      if (lastHistory) {
+          const diffMs = new Date() - lastHistory.changedAt;
+          const diffMins = Math.round(diffMs / 60000);
+          actualDuration = `${diffMins} mins`;
+      }
+  }
+
   if (status === "in-use") {
     if (!roll_no || !duration) {
       throw new ApiError(400, "roll_no and duration are required for in-use status");
     }
 
-    user = await User.findOne({ roll_no });
+    user = await User.findOne({ roll_no: new RegExp(`^${roll_no}$`, 'i') });
     await EquipmentHistory.create({
       equipment: equipmentDoc._id,
-      status: equipmentDoc.status,
-      user: equipmentDoc.user || null,
+      previousStatus: equipmentDoc.status,
+      status: "in-use",
+      user: user ? user._id : null,
       roll_no: roll_no || null,
-      duration: equipmentDoc.duration || null,
+      duration: null, // Start of assignment, duration is 0 so far
+      unregisteredName: unregisteredName || null,
+      unregisteredPhone: unregisteredPhone || null,
       changedAt: new Date(),
     });
+
     if (user) {
       registered = true;
       equipmentDoc.user = user._id;
       equipmentDoc.roll_no = user.roll_no;
+      equipmentDoc.unregisteredName = null;
+      equipmentDoc.unregisteredPhone = null;
     } else {
       registered = true;
       equipmentDoc.user = null;
       equipmentDoc.roll_no = roll_no;
+      equipmentDoc.unregisteredName = unregisteredName || null;
+      equipmentDoc.unregisteredPhone = unregisteredPhone || null;
     }
     equipmentDoc.duration = duration;
     equipmentDoc.status = "in-use";
   } else {
     await EquipmentHistory.create({
       equipment: equipmentDoc._id,
-      status: equipmentDoc.status,
+      previousStatus: equipmentDoc.status,
+      status: status,
       user: equipmentDoc.user || null,
-      duration: equipmentDoc.duration || null,
+      duration: actualDuration,
+      roll_no: equipmentDoc.roll_no || null,
+      unregisteredName: equipmentDoc.unregisteredName || null,
+      unregisteredPhone: equipmentDoc.unregisteredPhone || null,
       changedAt: new Date(),
     });
 
     equipmentDoc.user = null;
     equipmentDoc.duration = null;
     equipmentDoc.roll_no = null;
+    equipmentDoc.unregisteredName = null;
+    equipmentDoc.unregisteredPhone = null;
     equipmentDoc.status = status;
   }
 
@@ -273,8 +297,20 @@ const updateEquipment = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, responseData, "Equipment updated successfully"));
 });
 
+const checkUserByRollNo = asyncHandler(async (req, res) => {
+  const { roll_no } = req.params;
+  if (!roll_no) throw new ApiError(400, "Roll number is required");
+
+  const user = await User.findOne({ roll_no: new RegExp(`^${roll_no}$`, 'i') }).select("fullname phone_number roll_no");
+  if (!user) {
+    return res.status(200).json(new ApiResponse(200, { exists: false }, "User not found"));
+  }
+
+  return res.status(200).json(new ApiResponse(200, { exists: true, user }, "User found"));
+});
+
 const getEquipment = asyncHandler(async (req, res) => {
-  const equipments = await Equipment.find().lean();
+  const equipments = await Equipment.find().populate("user", "fullname phone_number roll_no").lean();
   return res
     .status(200)
     .json(new ApiResponse(200, equipments, "Equipments fetched successfully"));
@@ -540,14 +576,20 @@ const getActiveTickets = asyncHandler(async (req, res) => {
   const limit = 10;
   const skip = (page - 1) * limit;
 
-  const tickets = await Ticket.find({
-    status: { $in: ["in-process", "open"] },
-  })
+  const status = req.query.status;
+  const filter = {};
+  if (status && ["open", "in-process", "closed"].includes(status)) {
+    filter.status = status;
+  } else {
+    filter.status = { $in: ["in-process", "open"] };
+  }
+
+  const tickets = await Ticket.find(filter)
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
-  .populate("sender", "fullname roll_no email")
-  .populate("equipment", "name");
+    .populate("sender", "fullname roll_no email")
+    .populate("equipment", "name");
 
   return res.status(200).json(
     new ApiResponse(
@@ -677,5 +719,6 @@ export {
   getEquipmentRecentHistoryDict,
   getNoOfEquipmentHistory,
   getEquipmentHistory,
-  getEquipment
+  getEquipment,
+  checkUserByRollNo
 };

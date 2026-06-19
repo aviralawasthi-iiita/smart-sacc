@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Megaphone } from "lucide-react";
+import { Megaphone, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
@@ -15,26 +16,50 @@ interface Announcement {
 const AllAnnouncements = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchAnnouncements = async () => {
+  const fetchAnnouncements = async (pageNum: number, isLoadMore = false) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     try {
-      const res = await api.get("/users/get-announcements");
-      setAnnouncements(res.announcements || res.data?.announcements || []);
+      const res = await api.get(`/users/get-announcements?page=${pageNum}`);
+      const newAnnouncements = res.announcements || [];
+      if (isLoadMore) {
+        setAnnouncements((prev) => [...prev, ...newAnnouncements]);
+      } else {
+        setAnnouncements(newAnnouncements);
+      }
+      setHasNextPage(res.hasNextPage || false);
     } catch (error) {
       console.error("Error fetching announcements:", error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   useEffect(() => {
-    fetchAnnouncements();
+    fetchAnnouncements(1, false);
   }, []);
 
-  if (loading) {
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchAnnouncements(nextPage, true);
+  };
+
+  if (loading && page === 1) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
-        Loading announcements...
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="min-h-[calc(100vh-80px)] flex items-center justify-center text-muted-foreground pt-24">
+          Loading announcements...
+        </div>
       </div>
     );
   }
@@ -78,6 +103,20 @@ const AllAnnouncements = () => {
                 </CardContent>
               </Card>
             ))}
+
+            {hasNextPage && (
+              <div className="flex justify-center mt-8">
+                <Button
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  {loadingMore ? "Loading..." : "Load More"}
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </main>

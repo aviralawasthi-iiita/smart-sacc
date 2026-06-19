@@ -10,6 +10,11 @@ const equipmentHistorySchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
+  previousStatus: {
+    type: String,
+    required: true,
+    default: "unknown"
+  },
   user: {
     type: Schema.Types.ObjectId, 
     ref: "User", 
@@ -21,6 +26,14 @@ const equipmentHistorySchema = new mongoose.Schema({
   duration: { 
     type: String,
     default: null
+  },
+  unregisteredName: {
+    type: String,
+    default: null,
+  },
+  unregisteredPhone: {
+    type: String,
+    default: null,
   },
   changedAt: {
     type: Date,

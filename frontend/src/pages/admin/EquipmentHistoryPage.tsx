@@ -13,6 +13,7 @@ interface EquipmentHistoryEntry {
   _id: string;
   equipment: string;
   status: string;
+  previousStatus?: string;
   user?: {
     name: string;
     email: string;
@@ -20,6 +21,8 @@ interface EquipmentHistoryEntry {
   } | null;
   roll_no?: string | null;
   duration?: string | null;
+  unregisteredName?: string | null;
+  unregisteredPhone?: string | null;
   changedAt: string;
 }
 
@@ -47,39 +50,44 @@ const EquipmentHistoryPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [equipmentIdMap, setEquipmentIdMap] = useState<{ [equipmentName: string]: string }>({});
 
-  // Fetch initial equipment history dictionary
+  // Fetch initial equipment list
   useEffect(() => {
-    const fetchEquipmentHistoryDict = async () => {
+    const fetchEquipmentList = async () => {
       try {
         setLoading(true);
         const response = await wrapApiCall(() => 
-          api.get("/admin/get-equipment-recent-history-dict")
+          api.get("/admin/get-equipment")
         );
-        console.log("Equipment history dict response:", response);
+        console.log("Equipment list response:", response);
         
-        if (response && typeof response === 'object') {
-          setEquipmentHistoryDict(response);
-          
-          // Extract equipment IDs from the first entry of each equipment
+        // Handle different API response structures (direct array or wrapped in data property)
+        const equipmentArray = Array.isArray(response) ? response : (response?.data && Array.isArray(response.data) ? response.data : null);
+
+        if (equipmentArray) {
           const idMap: { [equipmentName: string]: string } = {};
-          Object.entries(response).forEach(([equipmentName, historyArray]) => {
-            if (historyArray && historyArray[0].equipment) {
-              idMap[equipmentName] = historyArray[0].equipment;
+          const dict: EquipmentHistoryDict = {};
+          
+          equipmentArray.forEach((eq: any) => {
+            if (eq && eq.name) {
+              idMap[eq.name] = eq._id;
+              dict[eq.name] = []; // We no longer load recent history upfront
             }
           });
+          
           setEquipmentIdMap(idMap);
+          setEquipmentHistoryDict(dict);
         } else {
           setEquipmentHistoryDict({});
         }
       } catch (err) {
-        console.error("Error fetching equipment history:", err);
-        toast.error("Failed to load equipment history");
+        console.error("Error fetching equipment list:", err);
+        toast.error("Failed to load equipment list");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchEquipmentHistoryDict();
+    fetchEquipmentList();
   }, [wrapApiCall]);
 
   // Fetch full history for an equipment when expanded
@@ -101,7 +109,7 @@ const EquipmentHistoryPage = () => {
       
       // Get first page of history
       const historyResponse = await wrapApiCall(() =>
-        api.get(`/admin/get-recent-equipment-history/${equipmentId}?page=1`)
+        api.get(`/admin/get-equipment-history/${equipmentId}?page=1`)
       );
       console.log("History response:", historyResponse);
 
@@ -129,7 +137,7 @@ const EquipmentHistoryPage = () => {
       if (!equipmentId) return;
 
       const response = await wrapApiCall(() =>
-        api.get(`/admin/get-recent-equipment-history/${equipmentId}?page=${page}`)
+        api.get(`/admin/get-equipment-history/${equipmentId}?page=${page}`)
       );
 
       setFullHistory(prev => ({
@@ -255,18 +263,10 @@ const EquipmentHistoryPage = () => {
                       )}
                     </Button>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Recent {equipmentHistory?.length || 0} changes
-                  </p>
                 </CardHeader>
 
-                {/* Recent History (Always visible) */}
+                {/* Expanded Full History */}
                 <CardContent className="pt-0">
-                  <div className="space-y-3">
-                    {equipmentHistory?.slice(0, 3).map((entry) => (
-                      <HistoryEntry key={entry._id} entry={entry} />
-                    ))}
-                  </div>
 
                   {/* Expanded Full History */}
                   {expandedEquipment === equipmentName && (
@@ -334,10 +334,14 @@ const HistoryEntry = ({ entry }: { entry: EquipmentHistoryEntry }) => {
 
   // Safe access to user properties
   const getUserDisplay = () => {
+    if (entry.status !== "in-use" && entry.previousStatus !== "in-use") return "System";
+
     if (entry.user) {
       return `By: ${entry.user.name || 'Unknown'} (${entry.user.roll_no || 'No roll number'})`;
     } else if (entry.roll_no) {
       return `By: Roll No: ${entry.roll_no}`;
+    } else if (entry.unregisteredName) {
+      return `By: ${entry.unregisteredName}`;
     } else {
       return "System";
     }
@@ -346,17 +350,25 @@ const HistoryEntry = ({ entry }: { entry: EquipmentHistoryEntry }) => {
   return (
     <div className="flex items-start justify-between p-3 rounded-lg border hover:bg-muted/30 transition">
       <div className="flex-1">
-        <div className="flex items-center gap-4 mb-1">
+        <div className="flex items-center gap-2 mb-1">
+          {entry.previousStatus && (
+            <>
+              <Badge className={getStatusColor(entry.previousStatus)}>
+                {entry.previousStatus}
+              </Badge>
+              <span className="text-muted-foreground font-bold">→</span>
+            </>
+          )}
           <Badge className={getStatusColor(entry.status)}>
             {entry.status}
           </Badge>
           {entry.duration && (
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm text-muted-foreground ml-2">
               Duration: {entry.duration}
             </span>
           )}
         </div>
-        <div className="text-xs text-muted-foreground">
+        <div className="text-xs text-muted-foreground mt-2">
           {getUserDisplay()}
           {" • "}
           {new Date(entry.changedAt).toLocaleString()}

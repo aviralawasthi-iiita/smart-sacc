@@ -17,6 +17,7 @@ import {
   getConversations,
   getMessages,
   getGames,
+  getAnnouncements,
   brokenEquipmentTicket,
   verifyEmail,
   resendVerificationEmail
@@ -48,6 +49,7 @@ router.route("/get-players").get(verifyJWT, getPlayers);
 router.route("/send-message").post(verifyJWT, sendMessage);
 router.route("/get-conversations").get(verifyJWT, getConversations);
 router.route("/get-messages/:otherUserId").get(verifyJWT, getMessages);
+router.route("/get-announcements").get(verifyJWT, getAnnouncements);
 router.route("/create-ticket").post(verifyJWT, brokenEquipmentTicket);
 
 export default router;

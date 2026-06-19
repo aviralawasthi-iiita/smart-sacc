@@ -77,30 +77,32 @@ const seedDatabase = async () => {
 
     console.log("Seeding Games and Equipment...");
     
-    const gameTT = await Game.create({ name: "Table Tennis" });
-    const gameSnooker = await Game.create({ name: "Snooker" });
-    const gameBadminton = await Game.create({ name: "Badminton" });
-    const gameChess = await Game.create({ name: "Chess" });
+    const seedItems = [
+      { name: "Table Tennis", equipName: "Table Tennis" },
+      { name: "Snooker", equipName: "Snooker Table" },
+      { name: "Badminton", equipName: "Badminton Set" },
+      { name: "Chess", equipName: "Chess Set" },
+      { name: "Basketball", equipName: "Basketball" },
+      { name: "Football", equipName: "Football" },
+      { name: "Volleyball", equipName: "Volleyball" },
+      { name: "Cricket", equipName: "Cricket Kit" },
+      { name: "Tennis", equipName: "Tennis Racket" },
+      { name: "Squash", equipName: "Squash Racket" },
+      { name: "Carrom", equipName: "Carrom Board" },
+      { name: "Foosball", equipName: "Foosball Table" },
+      { name: "Darts", equipName: "Darts Set" },
+      { name: "Gym", equipName: "Dumbbell Set" },
+    ];
 
-    const equipTT = await Equipment.create({ 
-      name: "Table Tennis", 
-      status: "in-use"
-    });
-    const equipSnooker = await Equipment.create({ name: "Snooker Table" });
-    const equipBadminton = await Equipment.create({ name: "Badminton Set" });
-    const equipChess = await Equipment.create({ name: "Chess Set" });
-
-    gameTT.equipment.push(equipTT._id);
-    await gameTT.save();
-
-    gameSnooker.equipment.push(equipSnooker._id);
-    await gameSnooker.save();
-
-    gameBadminton.equipment.push(equipBadminton._id);
-    await gameBadminton.save();
-
-    gameChess.equipment.push(equipChess._id);
-    await gameChess.save();
+    for (const item of seedItems) {
+      const game = await Game.create({ name: item.name });
+      const equip = await Equipment.create({ 
+        name: item.equipName, 
+        status: item.name === "Table Tennis" ? "in-use" : "available" 
+      });
+      game.equipment.push(equip._id);
+      await game.save();
+    }
 
     console.log("Games and Equipment seeded.");
 

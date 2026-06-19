@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Search, Send, MoreVertical, MessageCircle, Clock, Wifi, WifiOff } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useInfiniteQuery, InfiniteData } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
@@ -45,21 +45,51 @@ const Chat = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const shouldScrollToBottomRef = useRef(true);
+
   // ─── REST queries for initial data load ──────────────────────────
-  const { data: conversations, isLoading: isLoadingConversations } = useQuery<ApiConversation[]>({
+  const {
+    data: conversationsData,
+    isLoading: isLoadingConversations,
+    fetchNextPage: fetchNextConversations,
+    hasNextPage: hasNextConversations,
+    isFetchingNextPage: isFetchingNextConversations,
+  } = useInfiniteQuery<ApiConversation[]>({
     queryKey: ["conversations"],
-    queryFn: () => wrapApiCall(() => api.get("/users/get-conversations"))
+    queryFn: ({ pageParam = 1 }) =>
+      wrapApiCall(() => api.get(`/users/get-conversations?page=${pageParam}&limit=10`)),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.length === 10 ? allPages.length + 1 : undefined;
+    },
   });
 
-  const fetchMessages = (otherUserId: string) => {
-    return wrapApiCall(() => api.get(`/users/get-messages/${otherUserId}`)) as Promise<ApiMessage[]>;
+  const conversations = conversationsData?.pages.flat() || [];
+
+  const fetchMessages = (otherUserId: string, pageParam: number) => {
+    return wrapApiCall(() =>
+      api.get(`/users/get-messages/${otherUserId}?page=${pageParam}&limit=30`)
+    ) as Promise<ApiMessage[]>;
   };
 
-  const { data: messages, isLoading: isLoadingMessages } = useQuery({
+  const {
+    data: messagesData,
+    isLoading: isLoadingMessages,
+    fetchNextPage: fetchNextMessages,
+    hasNextPage: hasNextMessages,
+    isFetchingNextPage: isFetchingNextMessages,
+  } = useInfiniteQuery<ApiMessage[]>({
     queryKey: ["messages", selectedChatId],
-    queryFn: () => fetchMessages(selectedChatId!),
+    queryFn: ({ pageParam = 1 }) => fetchMessages(selectedChatId!, pageParam as number),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.length === 30 ? allPages.length + 1 : undefined;
+    },
     enabled: !!selectedChatId,
   });
+
+  // Flat chronological array: older pages first, newer pages last
+  const messages = messagesData?.pages ? messagesData.pages.slice().reverse().flat() : [];
 
   // ─── Socket.IO: real-time message handling ───────────────────────
   useEffect(() => {
@@ -72,12 +102,20 @@ const Chat = () => {
       
       console.log("⚡ [handleNewMessage] Received:", msg.content, "Partner:", chatPartnerId);
 
-      queryClient.setQueryData<ApiMessage[]>(
+      queryClient.setQueryData<InfiniteData<ApiMessage[]>>(
         ["messages", chatPartnerId],
         (old) => {
-          if (!old) return [msg];
-          if (old.some(m => String(m._id) === String(msg._id))) return old;
-          return [...old, msg];
+          if (!old) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page, idx) => {
+              if (idx === 0) {
+                if (page.some(m => String(m._id) === String(msg._id))) return page;
+                return [...page, msg];
+              }
+              return page;
+            })
+          };
         }
       );
       
@@ -127,6 +165,7 @@ const Chat = () => {
           sonner.error(response.error);
         } else {
           setMessage("");
+          shouldScrollToBottomRef.current = true;
         }
       }
     );
@@ -154,10 +193,54 @@ const Chat = () => {
     [socket, selectedChatId]
   );
 
+  // Reset scroll to bottom flag when changing chat
+  useEffect(() => {
+    shouldScrollToBottomRef.current = true;
+  }, [selectedChatId]);
+
   // ─── Auto-scroll to bottom ──────────────────────────────────────
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (shouldScrollToBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
+
+  // ─── Scroll handlers for infinite scrolling ──────────────────────
+  const handleConversationsScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (
+      container.scrollHeight - container.scrollTop <= container.clientHeight + 20 &&
+      hasNextConversations &&
+      !isFetchingNextConversations
+    ) {
+      fetchNextConversations();
+    }
+  };
+
+  const handleMessagesScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    
+    // Check if user is near bottom to re-enable scroll-to-bottom behavior
+    const isNearBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
+    if (isNearBottom) {
+      shouldScrollToBottomRef.current = true;
+    }
+
+    if (
+      container.scrollTop <= 20 &&
+      hasNextMessages &&
+      !isFetchingNextMessages
+    ) {
+      shouldScrollToBottomRef.current = false;
+      const scrollHeightBefore = container.scrollHeight;
+      
+      fetchNextMessages().then(() => {
+        setTimeout(() => {
+          container.scrollTop = container.scrollTop + (container.scrollHeight - scrollHeightBefore);
+        }, 0);
+      });
+    }
+  };
 
   // ─── Auto-select first conversation ─────────────────────────────
   const selectedChat = conversations?.find((c) => c.otherUser._id === selectedChatId);
@@ -197,8 +280,8 @@ const Chat = () => {
 
         <div className="grid lg:grid-cols-3 gap-6 h-[calc(100vh-250px)]">
           {/* Conversations List */}
-          <Card className="border-2 lg:col-span-1 animate-scale-in">
-            <CardHeader className="border-b">
+          <Card className="border-2 lg:col-span-1 animate-scale-in flex flex-col h-full overflow-hidden">
+            <CardHeader className="border-b flex-shrink-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -208,7 +291,7 @@ const Chat = () => {
                 />
               </div>
             </CardHeader>
-            <CardContent className="p-0 overflow-y-auto">
+            <CardContent className="p-0 overflow-y-auto flex-1" onScroll={handleConversationsScroll}>
               <div className="divide-y">
                 {isLoadingConversations && (
                   <p className="p-4 text-center">Loading chats...</p>
@@ -268,15 +351,18 @@ const Chat = () => {
                     </div>
                   );
                 })}
+                {isFetchingNextConversations && (
+                  <p className="p-2 text-center text-xs text-muted-foreground">Loading more chats...</p>
+                )}
               </div>
             </CardContent>
           </Card>
 
           {/* Chat Area */}
-          <Card className="border-2 lg:col-span-2 flex flex-col animate-scale-in">
+          <Card className="border-2 lg:col-span-2 flex flex-col animate-scale-in h-full overflow-hidden">
             {selectedChat ? (
               <>
-                <CardHeader className="border-b">
+                <CardHeader className="border-b flex-shrink-0">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="relative">
@@ -309,9 +395,12 @@ const Chat = () => {
                   </div>
                 </CardHeader>
 
-                <CardContent className="flex-1 overflow-y-auto p-4 bg-background">
+                <CardContent className="flex-1 overflow-y-auto p-4 bg-background" onScroll={handleMessagesScroll}>
                   {isLoadingMessages && (
                     <p className="text-center">Loading messages...</p>
+                  )}
+                  {isFetchingNextMessages && (
+                    <p className="text-center text-xs text-muted-foreground pb-2">Loading older messages...</p>
                   )}
 
                   <div className="flex flex-col w-full space-y-3">
@@ -365,7 +454,7 @@ const Chat = () => {
                   </div>
                 </CardContent>
 
-                <div className="border-t p-4">
+                <div className="border-t p-4 flex-shrink-0">
                   <div className="flex items-center gap-2">
                     <Input
                       type="text"

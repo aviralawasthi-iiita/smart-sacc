@@ -81,6 +81,8 @@ const StudentRegister = () => {
     // Username validation
     if (!formData.username.trim()) {
       newErrors.username = "Username is required";
+    } else if (formData.username.includes("@")) {
+      newErrors.username = "Username cannot contain '@'";
     }
 
     // Email validation
