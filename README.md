@@ -1,212 +1,152 @@
+# Smart SAC (Student Activity Center)
 
+Smart SAC is an enterprise-grade, real-time Student Activity Center management platform. It digitizes operations, connects students with similar interests, and streamlines administrative tracking of sports equipment and facility issues.
 
-# SAC-MAIN
-
-SAC-MAIN is a two-part project that modernizes a Student Activity Center (Smart SAC). It includes:
-
-- A React + Vite frontend (frontend) built with TypeScript, Tailwind CSS and shadcn-ui.
-- A Node.js backend (backend) with Express for API and server-side logic.
-
-This README consolidates everything you need to understand, run, and develop the project — all in one file.
+The application is split into a robust **Node.js/Express Backend** and a highly interactive **React/Vite Frontend**, orchestrated by Docker and backed by MongoDB and Redis.
 
 ---
 
-## Table of contents
+## 🌟 Comprehensive Feature Set
 
-1. Project overview
-2. Repository layout
-3. Frontend: frontend
-   - Features
-   - Quick start
-   - Important files
-   - Environment variables
-4. Backend: backend
-   - Features
-   - Quick start
-   - Important files & exports
-   - Environment variables & scripts
-5. Development workflow
-6. Common tasks & commands
-7. Troubleshooting
-8. Contributing
-9. License
+### 🧑‍🎓 Student Portal
+*   **Authentication & Session Management:**
+    *   Secure JWT-based authentication using HTTP-only cookies.
+    *   Email verification workflows via Nodemailer.
+    *   Password recovery flows.
+*   **Profile & Activity Tracking:**
+    *   Customizable profiles with profile picture uploads (handled via Cloudinary).
+    *   Tracking of personal achievements, favorite games, and self-rated skill levels to facilitate matchmaking.
+*   **Player Networking (Matchmaking):**
+    *   Browse other students based on their game preferences and ratings.
+    *   Find partners for table tennis, badminton, chess, and more.
+*   **Real-time Chat System:**
+    *   WebSocket-powered one-on-one and room-based chat using `Socket.io`.
+    *   Real-time online status indicators and typing events.
+*   **Equipment Checkout Flow:**
+    *   Browse available sports equipment in real-time.
+    *   Request equipment and view active/historical checkout logs.
+*   **Ticketing & Complaints Desk:**
+    *   Submit maintenance requests or complaints.
+    *   Track ticket status (Open, In Progress, Resolved) and communicate directly with admins.
 
----
-
-## 1. Project overview
-
-SAC-MAIN aims to provide a modern interface for student activity center management, including real-time equipment tracking, player connections, and booking flows. The project is split into two main directories:
-
-- Frontend (client SPA): `frontend/`
-- Backend (API server): `backend/`
-
-Both parts are developed and run independently during development; they communicate via REST endpoints.
-
----
-
-## 2. Repository layout
-
-Top-level folders and notable files:
-
-- [frontend/](frontend/)
-  - [frontend/package.json](frontend/package.json)
-  - [frontend/.env.development](frontend/.env.development)
-  - [frontend/src/main.tsx](frontend/src/main.tsx)
-  - [frontend/index.html](frontend/index.html)
-  - [frontend/bun.lockb](frontend/bun.lockb)
-  - [frontend/README.md](frontend/README.md)
-- [backend/](backend/)
-  - [backend/package.json](backend/package.json)
-  - [backend/src/app.js](backend/src/app.js)
-  - [backend/src/constants.js](backend/src/constants.js)
-  - [backend/.npmrc](backend/.npmrc)
-- Root-level:
-  - [README.md](README.md) ← this file
-
-Use the above links to open files inside the workspace.
+### 🛡️ Administration Dashboard
+*   **Analytics Overview:**
+    *   Visual representation of platform metrics using Recharts.
+    *   Live view of active users, equipment in-use vs. available, and pending tickets.
+*   **Inventory & Equipment Management:**
+    *   Full CRUD capabilities for the equipment repository.
+    *   Assign equipment directly to students via their Roll Number or Email.
+    *   Track historical usage logs to identify lost or broken items.
+*   **User Moderation:**
+    *   Approve "Pending Users" to restrict platform access only to verified university students.
+    *   View full student directories and their activity logs.
+*   **Announcement Broadcasting:**
+    *   Create and publish rich-text announcements visible immediately on all student dashboards.
+*   **Facility/Game Configurations:**
+    *   Manage available games, updating the centralized catalog that drives student matchmaking.
 
 ---
 
-## 3. Frontend: frontend
+## 🏗️ In-Depth Architecture & Tech Stack
 
-Purpose: Single Page Application for Smart SAC admin & student dashboards, authentication, and booking UX.
+### Frontend Architecture (`/frontend`)
+The frontend is a React 18 Single Page Application (SPA) built for extreme modularity and responsiveness.
+*   **Core Framework:** React 18 with TypeScript, bundled by Vite for HMR and optimized builds.
+*   **Routing:** `react-router-dom` (v6) implementing layout routes, protected routes (Auth Guards), and role-based access control (Admin vs. Student).
+*   **State & Data Fetching:** `@tanstack/react-query` handles server state, caching, background synchronization, and optimistic UI updates.
+*   **UI/UX & Styling:**
+    *   **Tailwind CSS** for atomic, utility-first styling.
+    *   **shadcn/ui** providing unstyled, accessible Radix UI primitives that are heavily customized for a premium look (Glassmorphism, dark mode capabilities).
+    *   **Lucide React** for consistent iconography.
+    *   **Embla Carousel** and **Recharts** for interactive data components.
+*   **Forms:** `react-hook-form` paired with `zod` for rigorous client-side schema validation before data hits the API.
 
-Tech stack:
-- Vite
-- React + TypeScript
-- Tailwind CSS
-- shadcn-ui components
-- lucide-react icons
-
-Key features:
-- Admin & student dashboards
-- Authentication UI pages (login)
-- Theme provider integration and global styles
-
-Quick start (frontend)
-1. Open a terminal and change directory:
-   npm install
-   cd frontend
-   npm install
-2. Start the dev server with Vite:
-   npm run dev
-
-(Use the integrated IDE terminal or external terminal; Vite runs on a default port and provides hot reload.)
-
-Important files:
-- Entry: [frontend/src/main.tsx](frontend/src/main.tsx) — bootstraps the React app and registers [`ThemeProvider`](frontend/src/components/ThemeProvider.tsx) (imported in main.tsx).
-- HTML template: [frontend/index.html](frontend/index.html)
-- Environment for dev API base URL: [frontend/.env.development](frontend/.env.development) — contains:
-  - VITE_API_BASE_URL=http://localhost:8000/api/v1
-- Lock file (binary, Bun): [frontend/bun.lockb](frontend/bun.lockb)
-
-Notes:
-- The frontend expects an API at VITE_API_BASE_URL while developing. Ensure the backend is running at that address (default in examples is http://localhost:8000).
+### Backend Architecture (`/backend`)
+The backend is an Express-based REST API with integrated WebSockets, utilizing a layered controller-model-middleware architecture.
+*   **Core Server:** Node.js + Express.js (v5).
+*   **Database (MongoDB + Mongoose):**
+    *   Schema definitions for `User`, `Admin`, `Game`, `Equipment`, `EquipmentHistory`, `Message`, `Room`, `Ticket`, and `Announcement`.
+    *   Aggregations used for generating admin dashboard statistics.
+*   **Caching & Optimization (Redis):**
+    *   `ioredis` is used as a caching layer to reduce MongoDB load.
+    *   Caches frequently accessed data (like auth tokens, configurations) with fallback mechanisms if the Redis instance drops.
+*   **Real-time Engine:** `Socket.io` attached to the Express HTTP server, utilizing JWT verification during the WebSocket handshake to prevent unauthorized event emitting.
+*   **Media Management:** `multer` intercepts multipart/form-data, temporarily storing files before uploading them directly to **Cloudinary** via their SDK.
+*   **Security & Auth:**
+    *   Bcrypt for salting and hashing passwords.
+    *   Short-lived Access Tokens and long-lived Refresh Tokens (JWT) stored in secure cookies (`cookie-parser`).
 
 ---
 
-## 4. Backend: backend
+## 🚀 DevOps, CI/CD, and Deployment
 
-Purpose: REST API and server-side logic for Smart SAC including authentication, resource endpoints, image uploads, and any server middleware.
+### Dockerized Infrastructure
+The entire platform is containerized for seamless local development and production parity.
+*   **Frontend Container:** Multi-stage build. Compiles the React app via Node alpine and serves the static `/dist` folder using a lightweight `nginx:alpine` image. Includes SPA routing fallbacks in `nginx.conf`.
+*   **Backend Container:** Node 18 alpine image running the Express API.
+*   **Service Containers:** Official `mongo:latest` and `redis:alpine` images spun up alongside the app.
+*   **Docker Compose:** Orchestrates the bridge network, maps persistent named volumes (`mongodb_data`, `redis_data`), and automatically injects service hostnames as environment variables.
 
-Tech stack:
-- Node.js (ES Modules)
-- Express (v5.x)
-- dotenv for environment variables
-- bcrypt, jsonwebtoken, cloudinary, etc. (see dependencies)
-
-Quick start (backend)
-1. Open a terminal and change directory:
-   cd backend
-   npm install
-2. Start the server in development:
-   npm run dev
-
-Scripts (from [backend/package.json](backend/package.json)):
-- dev: nodemon -r dotenv/config --experimental-json-modules src/index.js
-- seed: node --experimental-json-modules src/seed.js
-
-Important files & exports:
-- Server setup & main express app: [backend/src/app.js](backend/src/app.js)
-  - Exports: [`app`](backend/src/app.js) — exported as `export {app};` at the end of file.
-  - The file contains global error handling (see the "Unhandled Error" handler).
-- Constants: [backend/src/constants.js](backend/src/constants.js) — exports database name `DB_Name`.
-- Package metadata & scripts: [backend/package.json](backend/package.json)
-- Local npm configuration: [backend/.npmrc](backend/.npmrc) (sets local install prefix in the workspace sample)
-
-Backend environment variables (typical)
-- PORT — port to run the API server (often 8000 in this project)
-- MONGO_URI or other DB connection string (if using MongoDB)
-- JWT_SECRET — JSON Web Token secret for auth
-- CLOUDINARY_* — cloudinary config for image uploads (if used)
-- Any other provider keys your server expects
-
-(There is no single env file shown in the workspace excerpt; create `.env` or pass environment variables in your hosting environment.)
+### GitHub Actions Pipeline
+A production-grade `.github/workflows/ci.yml` pipeline is established to ensure code reliability:
+1.  **Monorepo Path Filtering:** `dorny/paths-filter` guarantees frontend jobs only run on frontend edits, and backend jobs on backend edits.
+2.  **Dependency Caching:** Built-in `actions/setup-node` caching slashes workflow execution times.
+3.  **Frontend Validation:** Enforces strict TypeScript checks (`tsc --noEmit`) and tests the Vite production build.
+4.  **Backend Integration Testing:** Spins up ephemeral Mongo and Redis service containers directly within the GitHub Runner to execute actual integration tests.
+5.  **Docker Dry-Runs:** Automatically executes `docker compose build` on every PR to guarantee Dockerfiles are never broken by code merges.
 
 ---
 
-## 5. Development workflow
+## 🛠️ Local Development Setup
 
-- Frontend and backend run independently.
-- Frontend uses Vite dev server and reads API URL from [frontend/.env.development](frontend/.env.development).
-- Backend runs via nodemon (auto-restarts) using `npm run dev` in `backend/`.
+### 1. Requirements
+*   Node.js 18+
+*   Docker & Docker Compose (Optional, but highly recommended)
 
-Recommended order to start while developing locally:
-1. Start the backend: cd backend && npm run dev
-2. Start the frontend: cd frontend && npm run dev
-3. Open the frontend app shown by Vite (default localhost:5173) — it will call the backend at configured VITE_API_BASE_URL.
+### 2. Quick Start via Docker
+The easiest way to boot the entire stack:
+```bash
+# In the root directory of the project
+docker compose up --build
+```
+*   Frontend will be available at: `http://localhost:5173`
+*   Backend will be available at: `http://localhost:8000`
 
-Use your IDE integrated terminal or the workspace terminal for logs. Vite and nodemon both print startup output to the terminal.
+### 3. Manual Startup (Without Docker)
 
----
+**Backend Setup:**
+1.  Navigate to `/backend` and run `npm install`.
+2.  Create a `.env` file based on `.env.example`. You will need a local MongoDB URI (`mongodb://localhost:27017/Smart-Sac`) and a Redis URI.
+3.  Run the development server: `npm run dev`.
+4.  *(Optional)* Seed the database with dummy data: `npm run seed` and `node seed-student.js`.
 
-## 6. Common tasks & commands
-
-From repository root, use separate terminals for each subproject.
-
-Frontend (frontend)
-- Install deps: cd frontend && npm install
-- Start dev server: npm run dev
-- Build for production: npm run build (if present in package.json)
-- Preview production build: npm run preview (if present)
-
-Backend (backend)
-- Install deps: cd backend && npm install
-- Start dev server: npm run dev
-- Seed DB (if seeder exists): npm run seed
-
-General
-- Run linting / formatting tools if configured (check package.json in each folder for scripts).
-- Inspect logs in the integrated terminal for errors. Use the IDE output panes as needed.
+**Frontend Setup:**
+1.  Navigate to `/frontend` and run `npm install`.
+2.  Create `/frontend/.env.development` with: `VITE_API_BASE_URL=http://localhost:8000/api/v1`
+3.  Run the Vite dev server: `npm run dev`.
 
 ---
 
-## 7. Troubleshooting
+## 📂 Project Structure Overview
 
-- Frontend can't reach API:
-  - Confirm backend is running on the address in [frontend/.env.development](frontend/.env.development).
-  - Check browser console and Vite terminal for CORS or network errors.
-- Backend server crashes:
-  - Inspect [backend/src/app.js](backend/src/app.js) console error output and nodemon logs.
-  - Confirm required environment variables are set.
-- Dependency issues:
-  - Delete node_modules and reinstall (npm ci or npm install).
-  - For bun.lockb usage: if you switch to Bun, the lock file is [frontend/bun.lockb](frontend/bun.lockb). Use Bun commands only if you choose Bun as runtime.
-
----
-
-## 8. Contributing
-
-- Branch from `main` for new features or fixes.
-- Keep changes scoped to either `frontend/` or `backend/` as appropriate.
-- Add tests where possible and update the README when you add major features.
-
----
-
-## 9. License
-
-- Check root or each package.json for the declared license. Example: [backend/package.json](backend/package.json) shows "license": "ISC".
-- Update license info here if you apply a different license.
-
----
-
+```text
+Smart-Sac/
+├── .github/workflows/    # CI/CD Pipelines
+├── docker-compose.yml    # Infrastructure orchestration
+├── frontend/             # React SPA
+│   ├── src/
+│   │   ├── components/   # Reusable UI components (shadcn, etc)
+│   │   ├── pages/        # View-level components (Admin/Student dashboards)
+│   │   ├── lib/          # Utilities and API config
+│   │   └── main.tsx      # Application entrypoint
+│   ├── Dockerfile        # Multi-stage Nginx build
+│   └── nginx.conf        # Web server routing rules
+└── backend/              # Node.js API
+    ├── src/
+    │   ├── controllers/  # Business logic & request handling
+    │   ├── middlewares/  # JWT Auth & Error handlers
+    │   ├── models/       # Mongoose Schemas
+    │   ├── db/           # Mongo & Redis connection singletons
+    │   └── app.js        # Express app initialization
+    └── Dockerfile        # Node alpine build
+```

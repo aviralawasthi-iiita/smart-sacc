@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Pass the backend API URL to the frontend build process
+        - VITE_API_BASE_URL=http://localhost:8000/api/v1
+    ports:
+      # Map host port 5173 to container's Nginx port 80
+      - "5173:80"
+    networks:
+      - smart-sac-network
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # Start command for local development
+    command: npm run dev
+    ports:
+      - "8000:8000"
+    volumes:
+      # Sync local code to container for live reloading during development
+      - ./backend:/app
+      # Prevent local node_modules from overwriting the container's modules
+      - /app/node_modules
+    env_file:
+      - ./backend/.env
+    environment:
+      # Use the Docker service names as hostnames to connect to the DB and Redis
+      - MONGODB_URL=mongodb://mongodb:27017
+      - REDIS_URL=redis://redis:6379
+    networks:
+      - smart-sac-network
+    depends_on:
+      - mongodb
+      - redis
+
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - smart-sac-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - smart-sac-network
+    restart: unless-stopped
+
+# Define persistent named volumes
+volumes:
+  mongodb_data:
+  redis_data:
+
+# Define custom shared bridge network
+networks:
+  smart-sac-network:
+    driver: bridge

@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 
+import { DB_Name } from "../constants.js";
+
 dotenv.config();
 
-const MONGODB_URL = "mongodb+srv://aviralawsthi:QA8eY5qL3HRUrTxL@smart-sac.xdxltsr.mongodb.net";
+const MONGODB_URL = process.env.MONGODB_URL;
 
 const gameSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -15,7 +17,7 @@ const Game = mongoose.models.Game || mongoose.model("Game", gameSchema);
 
 const equipmentSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    status: { type: String, required: true, enum: ["available", "in-use" , "broken"], default :"available" },
+    status: { type: String, required: true, enum: ["available", "in-use", "broken"], default: "available" },
 });
 
 const Equipment = mongoose.models.Equipment || mongoose.model("Equipment", equipmentSchema);
@@ -46,15 +48,15 @@ const equipments = [
 
 async function seed() {
     try {
-        await mongoose.connect(MONGODB_URL);
+        await mongoose.connect(`${process.env.MONGODB_URL}/${DB_Name}`);
         console.log("Connected to DB");
 
         for (const g of games) {
             try {
                 await Game.create(g);
                 console.log(`Added game: ${g.name}`);
-            } catch(e) {
-                if(e.code === 11000) console.log(`Game ${g.name} already exists`);
+            } catch (e) {
+                if (e.code === 11000) console.log(`Game ${g.name} already exists`);
             }
         }
 
@@ -62,13 +64,13 @@ async function seed() {
             try {
                 await Equipment.create(eq);
                 console.log(`Added equipment: ${eq.name}`);
-            } catch(e) {
-                if(e.code === 11000) console.log(`Equipment ${eq.name} already exists`);
+            } catch (e) {
+                if (e.code === 11000) console.log(`Equipment ${eq.name} already exists`);
             }
         }
         console.log("Seeding done");
         process.exit(0);
-    } catch(err) {
+    } catch (err) {
         console.error(err);
         process.exit(1);
     }

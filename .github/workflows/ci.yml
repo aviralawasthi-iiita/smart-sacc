@@ -1,0 +1,148 @@
+name: CI Pipeline
+
+# Trigger the workflow on pushes and PRs to the main branch
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ---------------------------------------------------------
+  # 1. Path Filtering: Determine which parts of the monorepo changed
+  # ---------------------------------------------------------
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # dorny/paths-filter allows us to conditionally run jobs based on file paths
+      - name: Check for changes in specific directories
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+            docker:
+              - 'frontend/Dockerfile'
+              - 'backend/Dockerfile'
+              - 'docker-compose.yml'
+
+  # ---------------------------------------------------------
+  # 2. Frontend Job
+  # ---------------------------------------------------------
+  build-frontend:
+    needs: changes
+    # Only run if files in the frontend folder changed
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    
+    # Run all steps in the frontend directory
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm' # Enables npm dependency caching
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Type Checking
+        run: npx tsc --noEmit
+
+      - name: Build Frontend
+        run: npm run build
+        env:
+          # Dummy URL for build time requirement
+          VITE_API_BASE_URL: http://localhost:8000/api/v1 
+
+  # ---------------------------------------------------------
+  # 3. Backend Job
+  # ---------------------------------------------------------
+  test-backend:
+    needs: changes
+    # Only run if files in the backend folder changed
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+
+    # Spin up ephemeral service containers for integration tests
+    services:
+      mongodb:
+        image: mongo:latest
+        ports:
+          - 27017:27017 # Map to localhost:27017 on the runner
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379   # Map to localhost:6379 on the runner
+
+    # Run all steps in the backend directory
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm' # Enables npm dependency caching
+          cache-dependency-path: './backend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Backend Tests
+        run: npm test
+        env:
+          # Connect to the service containers mapped to localhost
+          MONGODB_URL: mongodb://localhost:27017/testdb
+          REDIS_URL: redis://localhost:6379
+          PORT: 8000
+          JWT_SECRET: ci-test-secret
+
+  # ---------------------------------------------------------
+  # 4. Docker Build Test Job
+  # ---------------------------------------------------------
+  docker-build-test:
+    # Ensure this runs after frontend and backend jobs
+    needs: [changes, build-frontend, test-backend]
+    # Use always() to evaluate conditions even if prior jobs were skipped due to path filters
+    # Only run if docker files changed, OR frontend changed, OR backend changed.
+    # AND ensure that build-frontend and test-backend did not fail.
+    if: |
+      always() &&
+      (needs.changes.outputs.docker == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true') &&
+      (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped') &&
+      (needs.test-backend.result == 'success' || needs.test-backend.result == 'skipped')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Docker Compose Build (Dry Run)
+        # Builds all services without starting them to verify Dockerfiles compile
+        run: docker compose build
